@@ -113,16 +113,18 @@ EMIT CHANGES;
 #### Creating a materialized view for AdViews
 ```
 CREATE TABLE AdViews_view AS
-  SELECT id, ts, count(*) AS num
+  SELECT id AS ID, LATEST_BY_OFFSET(ts) AS TS
   FROM AdViews_STREAM
-  GROUP BY id, ts
+  GROUP BY id
+  EMIT CHANGES;
 ```
 #### Creating a materialized view for AdClicks
 ```
 CREATE TABLE AdClicks_view AS
-  SELECT id, ts, count(*) AS num
+  SELECT id AS ID, LATEST_BY_OFFSET(ts) AS TS
   FROM AdClicks_STREAM
-  GROUP BY id, ts
+  GROUP BY id
+  EMIT CHANGES;
 ```
 
 #### Inner join
@@ -132,6 +134,7 @@ SELECT V.id AS ID, V.ts AS TS_VIEW, C.ts AS TS_CLICK
 FROM AdViews_view V
   INNER JOIN AdClicks_view C
   ON V.id = C.id
+  EMIT CHANGES;
 ```
 #### Left join
 ![](https://cdn.confluent.io/wp-content/uploads/Left-Table-Table-Join-768x727.jpg)
@@ -140,6 +143,7 @@ SELECT V.id AS ID, V.ts AS TS_VIEW, C.ts AS TS_CLICK
 FROM AdViews_view V
   LEFT JOIN AdClicks_view C
   ON V.id = C.id
+  EMIT CHANGES;
 ```
 #### Outer join
 ![](https://cdn.confluent.io/wp-content/uploads/Outer-Table-Table-Join-768x727.jpg)
@@ -148,6 +152,7 @@ SELECT V.id AS ID, V.ts AS TS_VIEW, C.ts AS TS_CLICK
 FROM AdViews_view V
   FULL OUTER JOIN AdClicks_view C
   ON V.id = C.id
+  EMIT CHANGES;
 ```
 ### Kstream to Ktable joins
 TEXT
