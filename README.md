@@ -26,7 +26,7 @@ SET 'auto.offset.reset' = 'earliest';
 
 ## Introduction
 
-Please refer to [continuous-analytics-examples/epl_robotic-arm/readme.md](https://github.com/quantiaconsulting/continuous-analytics-examples/tree/master/epl_robotic-arm).
+This notebook summarizes the concepts described in the following [article](https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/). The Kafka 
 
 ## Code
 
