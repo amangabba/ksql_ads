@@ -29,11 +29,11 @@ SET 'auto.offset.reset' = 'earliest';
 This notebook summarizes some of the concepts described in the following [article](https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/), which describes the types of joins can be done with Kafka Streams. The notebook instead shows the joins supported in KsqlDB, with slight changes to the examples used in the article.
 
 Kafka supports three kinds of join:
-| Type             | Description                                                                                                                                        |
-|:----------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------|
-| Inner            | Emits an output when both input sources have records with the same key.                                                                            |
-| Left             | Emits an output for each record in the left or primary input source. If the other source does not have a value for a given key, it is set to null. |
-| Outer            | Emits an output for each record in either input source. If only one source contains a key, the other is null.                                      |
+| Type         | Description                                                                                                                                        |
+|:------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------|
+| Inner        | Emits an output when both input sources have records with the same key.                                                                            |
+| Left         | Emits an output for each record in the left or primary input source. If the other source does not have a value for a given key, it is set to null. |
+| Outer        | Emits an output for each record in either input source. If only one source contains a key, the other is null.                                      |
 
 The following table shows which operations are permitted between KStreams and Ktables:
 |Primary Type | Secondary Type | Inner Join | Left Join | Outer Join|
@@ -96,16 +96,17 @@ INSERT INTO AdClicks_STREAM (id, ts) VALUES ('G', '2021-10-23T06:00:09+0200');
 INSERT INTO AdClicks_STREAM (id, ts) VALUES ('B', '2021-10-23T06:00:11+0200');
 ```
 ### Kstream to Kstream joins
-TEXT
+KStream is stateless, so we need some internal state where we can save some results, windows are used to do that. In the following examples, we use windows of 9 seconds.
 #### Inner join
-![](https://cdn.confluent.io/wp-content/uploads/inner_stream-stream_join-768x475.jpg)
 ```
 SELECT *
 FROM AdViews_STREAM V
-  JOIN AdClicks_STREAM C WITHIN 10 SECONDS
+  JOIN AdClicks_STREAM C WITHIN 9 SECONDS
   ON V.id = C.id
 EMIT CHANGES;
 ```
+##### Result
+![](https://cdn.confluent.io/wp-content/uploads/inner_stream-stream_join-768x475.jpg)
 ```
 +------------------------+------------------------+------------------------+------------------------+
 |V_ID                    |V_TS                    |C_ID                    |C_TS                    |
@@ -118,8 +119,9 @@ EMIT CHANGES;
 |G                       |2021-10-23T06:00:08+0200|G                       |2021-10-23T06:00:09+0200|
 |G                       |2021-10-23T06:00:08+0200|G                       |2021-10-23T06:00:09+0200|
 ```
+Records A and C appear as expected as the key appears in both streams within 10 seconds, even though they come in different order. Records B produce no result: even though both records have matching keys, they do not appear within the time window. Records D and E don’t join because neither has a matching key contained in both streams. Records F and G appear two times as the keys appear twice in the view stream for F and in the clickstream for scenario G.
 #### Left join
-![](https://cdn.confluent.io/wp-content/uploads/left-stream-stream-join-768x459.jpg)
+The left join starts a computation each time an event arrives for either the left or right input stream. However, processing for both is slightly different. For input records of the left stream, an output event is generated every time an event arrives. If an event with the same key has previously arrived in the right stream, it is joined with the one in the primary stream. Otherwise it is set to null. On the other hand, each time an event arrives in the right stream, it is only joined if an event with the same key arrived in the primary stream previously.
 ```
 SELECT *
 FROM AdViews_STREAM V
@@ -127,6 +129,8 @@ FROM AdViews_STREAM V
   ON V.id = C.id
 EMIT CHANGES;
 ```
+##### Result
+![](https://cdn.confluent.io/wp-content/uploads/left-stream-stream-join-768x459.jpg)
 ```
 +------------------------+------------------------+------------------------+------------------------+
 |V_ID                    |V_TS                    |C_ID                    |C_TS                    |
@@ -145,8 +149,9 @@ EMIT CHANGES;
 |G                       |2021-10-23T06:00:08+0200|G                       |2021-10-23T06:00:09+0200|
 |B                       |2021-10-23T06:00:01+0200|B                       |2021-10-23T06:00:11+0200|
 ```
+The result contains all records from the inner join. Additionally, it contains a result record for B and D and thus contains all records from the primary (left) “view” stream. Also note the results for “view” records A, F.1/F.2, and G with null (indicated as “dot”) on the right-hand side. Those records would not be included in a SQL join. As Kafka provides stream join semantics and processes each record when it arrives, the right-hand window does not contain a corresponding keys for primary “view” input events A, F1./F.2, and G in the secondary “click” input stream in our example and thus correctly includes those events in the result.
 #### Outer join
-![](https://cdn.confluent.io/wp-content/uploads/outer-stream-stream-join-768x464.jpg)
+An outer join will emit an output each time an event is processed in either stream. If the window state already contains an element with the same key in the other stream, it will apply the join method to both elements. If not, it will only apply the incoming element.
 ```
 SELECT *
 FROM AdViews_STREAM V
@@ -154,6 +159,8 @@ FROM AdViews_STREAM V
   ON V.id = C.id
 EMIT CHANGES;
 ```
+##### Result
+![](https://cdn.confluent.io/wp-content/uploads/outer-stream-stream-join-768x464.jpg)
 ```
 +-------------------------+-------------------------+-------------------------+-------------------------+-------------------------+
 |ROWKEY                   |V_ID                     |V_TS                     |C_ID                     |C_TS                     |
@@ -191,11 +198,7 @@ CREATE TABLE AdClicks_view AS
   GROUP BY id
   EMIT CHANGES;
 ```
-```
-
-```
 #### Inner join
-![](https://cdn.confluent.io/wp-content/uploads/Inner-Table-Table-Join-768x727.jpg)
 ```
 SELECT V.id AS ID, V.ts AS TS_VIEW, C.ts AS TS_CLICK
 FROM AdViews_view V
@@ -203,6 +206,8 @@ FROM AdViews_view V
   ON V.id = C.id
   EMIT CHANGES;
 ```
+##### Result
+![](https://cdn.confluent.io/wp-content/uploads/Inner-Table-Table-Join-768x727.jpg)
 ```
 +----------------------------+----------------------------+----------------------------+
 |ID                          |TS_VIEW                     |TS_CLICK                    |
@@ -220,7 +225,6 @@ FROM AdViews_view V
 ```
 
 #### Left join
-![](https://cdn.confluent.io/wp-content/uploads/Left-Table-Table-Join-768x727.jpg)
 ```
 SELECT V.id AS ID_VIEW, V.ts AS TS_VIEW, C.id AS ID_CLICK, C.ts AS TS_CLICK
 FROM AdViews_view V
@@ -228,6 +232,8 @@ FROM AdViews_view V
   ON V.id = C.id
   EMIT CHANGES;
 ```
+##### Result
+![](https://cdn.confluent.io/wp-content/uploads/Left-Table-Table-Join-768x727.jpg)
 ```
 +-----------------------------+-----------------------------+-----------------------------+-----------------------------+
 |ID_VIEW                      |TS_VIEW                      |ID_CLICK                     |TS_CLICK                     |
@@ -245,7 +251,6 @@ FROM AdViews_view V
 |B                            |2021-10-23T06:00:01+0200     |B                            |2021-10-23T06:00:11+0200     |
 ```
 #### Outer join
-![](https://cdn.confluent.io/wp-content/uploads/Outer-Table-Table-Join-768x727.jpg)
 ```
 SELECT V.id AS ID_VIEW, V.ts AS TS_VIEW, C.id AS ID_CLICK, C.ts AS TS_CLICK
 FROM AdViews_view V
@@ -253,6 +258,8 @@ FROM AdViews_view V
   ON V.id = C.id
   EMIT CHANGES;
 ```
+##### Result
+![](https://cdn.confluent.io/wp-content/uploads/Outer-Table-Table-Join-768x727.jpg)
 ```
 +-----------------------------+-----------------------------+-----------------------------+-----------------------------+
 |ID_VIEW                      |TS_VIEW                      |ID_CLICK                     |TS_CLICK                     |
@@ -273,7 +280,6 @@ FROM AdViews_view V
 ### Kstream to Ktable joins
 TEXT
 #### Inner join
-![](https://cdn.confluent.io/wp-content/uploads/Inner-Stream-Table-Join-768x561.jpg)
 ```
 SELECT V.id AS ID, V.ts AS TS_VIEW, C.ts AS TS_CLICK
 FROM AdViews_STREAM V
@@ -281,11 +287,12 @@ FROM AdViews_STREAM V
   ON V.id = C.id
 EMIT CHANGES;
 ```
+##### Result
+![](https://cdn.confluent.io/wp-content/uploads/Inner-Stream-Table-Join-768x561.jpg)
 ```
 
 ```
 #### Left join
-![](https://cdn.confluent.io/wp-content/uploads/Left-Stream-Table-Join-768x561.jpg)
 ```
 SELECT V.id AS ID_VIEW, V.ts AS TS_VIEW, C.id AS ID_CLICK, C.ts AS TS_CLICK
 FROM AdViews_STREAM V
@@ -293,6 +300,8 @@ FROM AdViews_STREAM V
   ON V.id = C.id
 EMIT CHANGES;
 ```
+##### Result
+![](https://cdn.confluent.io/wp-content/uploads/Left-Stream-Table-Join-768x561.jpg)
 ```
 
 ```
