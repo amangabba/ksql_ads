@@ -26,12 +26,26 @@ SET 'auto.offset.reset' = 'earliest';
 
 ## Introduction
 
-This notebook summarizes the concepts described in the following [article](https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/). The Kafka 
+This notebook summarizes some of the concepts described in the following [article](https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/), which describes the types of joins can be done with Kafka Streams. The notebook instead shows the joins supported in KsqlDB, with slight changes to the examples used in the article.
 
-## Code
+Kafka supports three kinds of join:
+| Type             | Description                                                                                                                                        |
+|:----------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------|
+| Inner            | Emits an output when both input sources have records with the same key.                                                                            |
+| Left             | Emits an output for each record in the left or primary input source. If the other source does not have a value for a given key, it is set to null. |
+| Outer            | Emits an output for each record in either input source. If only one source contains a key, the other is null.                                      |
+
+The following table shows which operations are permitted between KStreams and Ktables:
+|Primary Type | Secondary Type | Inner Join | Left Join | Outer Join|
+|:-----------:|:--------------:|:----------:|:---------:|:---------:|
+| KStream     | KStream        | Supported  | Supported | Supported |
+| KTable      | KTable         | Supported  | Supported | Supported |
+| KStream     | KTable         | Supported  | Supported | N/A       |
+
+## Implementation in Ksql
 
 ### Creating the streams
-TEXT
+The example to demonstrate the differences in the joins is based on the online advertising domain. There is a Kafka topic that contains *view* events of particular ads and another one that contains the *click* events based on those ads. Views and clicks share an ID that serves as the key in both topics.
 #### Views stream
 ```
 CREATE STREAM AdViews_STREAM (id VARCHAR, ts VARCHAR)
@@ -53,16 +67,17 @@ CREATE STREAM AdClicks_STREAM (id VARCHAR, ts VARCHAR)
   timestamp_format='yyyy-MM-dd''T''HH:mm:ssZ');
 ```
 ### Data generation
-The events are generated through an [external data generator](https://github.com/amangabba/ksql_ads/edit/main/data_generator)
->Data stream used in the examples
+In the examples, custom set event times provide a convenient way to simulate the timing within the streams.
+We will look at the following 7 scenarios:
 >* a click event arrives 1 sec after the view
->* a click event arrives 11 sec after the view
+>* a click event arrives 10 sec after the view
 >* a view event arrives 1 sec after the click
 >* there is a view event but no click
 >* there is a click event but no view
 >* there are two consecutive view events and one click event 1 sec after the first view
 >* there is a view event followed by two click events shortly after each other
 #### Generation of stream events
+As we want to show showcase some specific scenarios, it's better to insert events manually (as seen in the image below).
 ![](https://cdn.confluent.io/wp-content/uploads/input-streams-1-768x300.jpg)
 ```
 INSERT INTO AdViews_STREAM (id, ts) VALUES ('A', '2021-10-23T06:00:00+0200');
