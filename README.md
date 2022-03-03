@@ -26,7 +26,7 @@ SET 'auto.offset.reset' = 'earliest';
 
 ## Introduction
 
-This notebook summarizes some of the concepts described in the following [article](https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/), which describes the types of joins can be done with Kafka Streams. The notebook instead shows the joins supported in KsqlDB, with slight changes to the examples used in the article.
+This notebook summarizes some of the concepts described in the following [article](https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/): the types of joins that can be used with Kafka Streams. The notebook instead shows the joins supported in KsqlDB, with slight changes to the examples used in the article.
 
 Kafka supports three kinds of join:
 | Type         | Description                                                                                                                                        |
@@ -107,6 +107,7 @@ EMIT CHANGES;
 ```
 ##### Result
 ![](https://cdn.confluent.io/wp-content/uploads/inner_stream-stream_join-768x475.jpg)
+**CHANGE RESULTS**
 ```
 +------------------------+------------------------+------------------------+------------------------+
 |V_ID                    |V_TS                    |C_ID                    |C_TS                    |
@@ -119,13 +120,13 @@ EMIT CHANGES;
 |G                       |2021-10-23T06:00:08+0200|G                       |2021-10-23T06:00:09+0200|
 |G                       |2021-10-23T06:00:08+0200|G                       |2021-10-23T06:00:09+0200|
 ```
-Records A and C appear as expected as the key appears in both streams within 10 seconds, even though they come in different order. Records B produce no result: even though both records have matching keys, they do not appear within the time window. Records D and E don’t join because neither has a matching key contained in both streams. Records F and G appear two times as the keys appear twice in the view stream for F and in the clickstream for scenario G.
+Records A and C appear as expected as the key appears in both streams within 9 seconds, even though they come in different order. Records B produce no result: even though both records have matching keys, they do not appear within the time window. Records D and E don’t join because neither has a matching key contained in both streams. Records F and G appear two times as the keys appear twice in the view stream for F and in the clickstream for scenario G.
 #### Left join
 The left join starts a computation each time an event arrives for either the left or right input stream. However, processing for both is slightly different. For input records of the left stream, an output event is generated every time an event arrives. If an event with the same key has previously arrived in the right stream, it is joined with the one in the primary stream. Otherwise it is set to null. On the other hand, each time an event arrives in the right stream, it is only joined if an event with the same key arrived in the primary stream previously.
 ```
 SELECT *
 FROM AdViews_STREAM V
-  LEFT JOIN AdClicks_STREAM C WITHIN 10 SECONDS
+  LEFT JOIN AdClicks_STREAM C WITHIN 9 SECONDS
   ON V.id = C.id
 EMIT CHANGES;
 ```
@@ -155,7 +156,7 @@ An outer join will emit an output each time an event is processed in either stre
 ```
 SELECT *
 FROM AdViews_STREAM V
-  FULL OUTER JOIN AdClicks_STREAM C WITHIN 10 SECONDS
+  FULL OUTER JOIN AdClicks_STREAM C WITHIN 9 SECONDS
   ON V.id = C.id
 EMIT CHANGES;
 ```
@@ -181,6 +182,7 @@ EMIT CHANGES;
 |null                     |G                        |2021-10-23T06:00:08+0200 |G                        |2021-10-23T06:00:09+0200 |
 |null                     |B                        |2021-10-23T06:00:01+0200 |B                        |2021-10-23T06:00:11+0200 |
 ```
+For record A, an event is emitted once the view is processed. There is no click yet. When the click arrives, the joined event on view and click is emitted. For records B, we also get two output events. However, since the events do not occur within the window, neither of these events contains both view and click (i.e., both are independent outer-join results). “View” record D appears in the output without a click, and the equivalent (but “reverse”) output is emitted for “click” record E. Records F produce 4 output events as there are two views that are emitted immediately and once again when they are joined against a click. In contrast, records G produce only 3 events as both clicks can be immediately joined against a view that arrived earlier.
 ### Ktable to Ktable joins
 #### Creating a materialized view for AdViews
 ```
@@ -199,6 +201,7 @@ CREATE TABLE AdClicks_view AS
   EMIT CHANGES;
 ```
 #### Inner join
+Joins on KTables are not windowed and their result is an ever-updating view of the join result of both input tables. If one input table is updated, the resulting KTable is also updated accordingly; note that this update to the result table is a new output record only, because the resulting KTable is not materialized by default.
 ```
 SELECT V.id AS ID, V.ts AS TS_VIEW, C.ts AS TS_CLICK
 FROM AdViews_view V
@@ -223,7 +226,11 @@ FROM AdViews_view V
 |G                           |2021-10-23T06:00:08+0200    |2021-10-23T06:00:09+0200    |
 |B                           |2021-10-23T06:00:01+0200    |2021-10-23T06:00:11+0200    |
 ```
+All the inner join pairs are emitted as expected. Since we’re no longer windowed, even record B/B is in the result. Note, that the result contains only one result for F but two for G. Because click F appears after views F.1 and F.2, F.2 did replace F.1 before F triggers the join computation. For G, the view arrives before both clicks and thus, G.1 and G.2 join with G. This scenario demonstrates the update behavior of table-table join. After G.1 arrived, the join result is G.1/G. Then the click event G.2 updates the click table and triggers a recomputation of the join result to G.2/G.1
 
+We want to point out that this update behavior also applies to deletions. If, for example, one input KTable is directly consumed from a compacted changelog topic and a tombstone record is consumed (a tombstone is a message with format <key:null> and has delete semantics), a result might be removed from the resulting KTable. This is indicated by appending a tombstone record to the resulting KTable.2
+
+Last but not least, similar to our KStream-KStream examples, we assume that records are processed in timestamp order. In practice, this might not hold as time synchronization between streams or tables is based on a best-effort principle. Thus, the intermediate result might differ slightly. For example, click F might get processed before views F.1 and F.2 even if click F has a larger timestamp. If this happens, we would get an additional intermediate result F.1/F before we get final result F.2/F. We want to point out that this runtime dependency does only apply to intermediate but not to the “final” result that is always the same.
 #### Left join
 ```
 SELECT V.id AS ID_VIEW, V.ts AS TS_VIEW, C.id AS ID_CLICK, C.ts AS TS_CLICK
@@ -250,6 +257,7 @@ FROM AdViews_view V
 |G                            |2021-10-23T06:00:08+0200     |G                            |2021-10-23T06:00:09+0200     |
 |B                            |2021-10-23T06:00:01+0200     |B                            |2021-10-23T06:00:11+0200     |
 ```
+The result is the same as with the inner join with the addition of proper data for (left) view events A, B, D, F.1, F.1, and G that do a left join with empty right-hand side when they are processed first. Thus, view D is preserved and only click E is not contained as there is no corresponding view.
 #### Outer join
 ```
 SELECT V.id AS ID_VIEW, V.ts AS TS_VIEW, C.id AS ID_CLICK, C.ts AS TS_CLICK
@@ -277,8 +285,13 @@ FROM AdViews_view V
 |G                            |2021-10-23T06:00:08+0200     |G                            |2021-10-23T06:00:09+0200     |
 |B                            |2021-10-23T06:00:01+0200     |B                            |2021-10-23T06:00:11+0200     |
 ```
+The result is the same as with the left join plus the “right join” result records for clicks C and D with an empty left-hand side.
+
+ We can observe that KTable-KTable join is pretty close to SQL semantics and thus easy to understand. The difference to plain SQL is that the resulting KTable gets updated automatically if an input KTable is updated. Thus, the resulting KTable can be described as an ever-updating view of the table join. 
 ### Kstream to Ktable joins
-TEXT
+Similar to a table-table join, this join is not windowed; however, the output of this operation is another stream, and not a table. However, differently from the other two cases, stream-table join is asymmetric, in this case only the (left) stream input triggers a join computation. Because the join is not-windowed, the (left) input stream is stateless and thus, join lookups from table record to stream records are not possible.
+
+Usually, this semantics is used to enrich a data stream with auxiliary information from a table. However, for the example in use we'll use the *"views"* as the left stream and *"clicks"* as the right table input: 
 #### Inner join
 ```
 SELECT V.id AS ID, V.ts AS TS_VIEW, C.ts AS TS_CLICK
@@ -292,7 +305,9 @@ EMIT CHANGES;
 ```
 
 ```
+The result is just a single record as click C is the only click that arrives before the corresponding view event.
 #### Left join
+It’s the same as an inner KStream-KTable join but preserves all (left) stream input records in case there is no matching join record in the (right) KTable input.
 ```
 SELECT V.id AS ID_VIEW, V.ts AS TS_VIEW, C.id AS ID_CLICK, C.ts AS TS_CLICK
 FROM AdViews_STREAM V
@@ -303,8 +318,8 @@ EMIT CHANGES;
 ##### Result
 ![](https://cdn.confluent.io/wp-content/uploads/Left-Stream-Table-Join-768x561.jpg)
 ```
-
 ```
+As expected, we get the inner C/C join result as well as one join result for each (left) stream record.
 ### Kstream to Global Ktable joins
 GlobalKTable is not supported by KsqlDB yet. In contrast to a KTable that is partitioned over all KafkaStreams instances, a GlobalKTable is fully replicated per KafkaStreams instance. Every partition of the underlying topic is consumed by each GlobalKTable, such that the full set of data is available in every KafkaStreams instance. This provides the ability to perform joins with KStream without having to repartition the input stream. All joins with the GlobalKTable require that a KeyValueMapper is provided that can map from the KeyValue of the left hand side KStream to the key of the right hand side GlobalKTable.
 #### Creating a GlobalKTable through StreamBuilder
