@@ -148,13 +148,12 @@ EMIT CHANGES;
 |G                       |2021-10-23T06:00:08+0200|null                    |null                    |
 |G                       |2021-10-23T06:00:08+0200|G                       |2021-10-23T06:00:09+0200|
 |G                       |2021-10-23T06:00:08+0200|G                       |2021-10-23T06:00:09+0200|
-|B                       |2021-10-23T06:00:01+0200|B                       |2021-10-23T06:00:11+0200|
 ```
 The result contains all records from the inner join. Additionally, it contains a result record for B and D and thus contains all records from the primary (left) “view” stream. Also note the results for “view” records A, F.1/F.2, and G with null (indicated as “dot”) on the right-hand side. Those records would not be included in a SQL join. As Kafka provides stream join semantics and processes each record when it arrives, the right-hand window does not contain a corresponding keys for primary “view” input events A, F1./F.2, and G in the secondary “click” input stream in our example and thus correctly includes those events in the result.
 #### Outer join
 An outer join will emit an output each time an event is processed in either stream. If the window state already contains an element with the same key in the other stream, it will apply the join method to both elements. If not, it will only apply the incoming element.
 ```
-SELECT *
+SELECT V.id AS ID_VIEW, V.ts AS TS_VIEW, C.id AS ID_CLICK, C.ts AS TS_CLICK
 FROM AdViews_STREAM V
   FULL OUTER JOIN AdClicks_STREAM C WITHIN 9 SECONDS
   ON V.id = C.id
@@ -163,24 +162,24 @@ EMIT CHANGES;
 ##### Result
 ![](https://cdn.confluent.io/wp-content/uploads/outer-stream-stream-join-768x464.jpg)
 ```
-+-------------------------+-------------------------+-------------------------+-------------------------+-------------------------+
-|ROWKEY                   |V_ID                     |V_TS                     |C_ID                     |C_TS                     |
-+-------------------------+-------------------------+-------------------------+-------------------------+-------------------------+
-|null                     |A                        |2021-10-23T06:00:00+0200 |null                     |null                     |
-|null                     |A                        |2021-10-23T06:00:00+0200 |A                        |2021-10-23T06:00:01+0200 |
-|null                     |B                        |2021-10-23T06:00:01+0200 |null                     |null                     |
-|null                     |null                     |null                     |C                        |2021-10-23T06:00:02+0200 |
-|null                     |C                        |2021-10-23T06:00:03+0200 |C                        |2021-10-23T06:00:02+0200 |
-|null                     |D                        |2021-10-23T06:00:04+0200 |null                     |null                     |
-|null                     |null                     |null                     |E                        |2021-10-23T06:00:05+0200 |
-|null                     |F                        |2021-10-23T06:00:06+0200 |null                     |null                     |
-|null                     |F                        |2021-10-23T06:00:06+0200 |null                     |null                     |
-|null                     |F                        |2021-10-23T06:00:06+0200 |F                        |2021-10-23T06:00:07+0200 |
-|null                     |F                        |2021-10-23T06:00:06+0200 |F                        |2021-10-23T06:00:07+0200 |
-|null                     |G                        |2021-10-23T06:00:08+0200 |null                     |null                     |
-|null                     |G                        |2021-10-23T06:00:08+0200 |G                        |2021-10-23T06:00:09+0200 |
-|null                     |G                        |2021-10-23T06:00:08+0200 |G                        |2021-10-23T06:00:09+0200 |
-|null                     |B                        |2021-10-23T06:00:01+0200 |B                        |2021-10-23T06:00:11+0200 |
++--------------------------+--------------------------+--------------------------+--------------------------+
+|ID_VIEW                   |TS_VIEW                   |ID_CLICK                  |TS_CLICK                  |
++--------------------------+--------------------------+--------------------------+--------------------------+
+|A                         |2021-10-23T06:00:00+0200  |null                      |null                      |
+|A                         |2021-10-23T06:00:00+0200  |A                         |2021-10-23T06:00:01+0200  |
+|B                         |2021-10-23T06:00:01+0200  |null                      |null                      |
+|null                      |null                      |C                         |2021-10-23T06:00:02+0200  |
+|C                         |2021-10-23T06:00:03+0200  |C                         |2021-10-23T06:00:02+0200  |
+|D                         |2021-10-23T06:00:04+0200  |null                      |null                      |
+|null                      |null                      |E                         |2021-10-23T06:00:05+0200  |
+|F                         |2021-10-23T06:00:06+0200  |null                      |null                      |
+|F                         |2021-10-23T06:00:06+0200  |null                      |null                      |
+|F                         |2021-10-23T06:00:06+0200  |F                         |2021-10-23T06:00:07+0200  |
+|F                         |2021-10-23T06:00:06+0200  |F                         |2021-10-23T06:00:07+0200  |
+|G                         |2021-10-23T06:00:08+0200  |null                      |null                      |
+|G                         |2021-10-23T06:00:08+0200  |G                         |2021-10-23T06:00:09+0200  |
+|G                         |2021-10-23T06:00:08+0200  |G                         |2021-10-23T06:00:09+0200  |
+|null                      |null                      |B                         |2021-10-23T06:00:11+0200  |
 ```
 For record A, an event is emitted once the view is processed. There is no click yet. When the click arrives, the joined event on view and click is emitted. For records B, we also get two output events. However, since the events do not occur within the window, neither of these events contains both view and click (i.e., both are independent outer-join results). “View” record D appears in the output without a click, and the equivalent (but “reverse”) output is emitted for “click” record E. Records F produce 4 output events as there are two views that are emitted immediately and once again when they are joined against a click. In contrast, records G produce only 3 events as both clicks can be immediately joined against a view that arrived earlier.
 ### Ktable to Ktable joins
@@ -212,19 +211,14 @@ FROM AdViews_view V
 ##### Result
 ![](https://cdn.confluent.io/wp-content/uploads/Inner-Table-Table-Join-768x727.jpg)
 ```
-+----------------------------+----------------------------+----------------------------+
-|ID                          |TS_VIEW                     |TS_CLICK                    |
-+----------------------------+----------------------------+----------------------------+
-|A                           |2021-10-23T06:00:00+0200    |2021-10-23T06:00:01+0200    |
-|B                           |2021-10-23T06:00:01+0200    |2021-10-23T06:00:11+0200    |
-|C                           |2021-10-23T06:00:03+0200    |2021-10-23T06:00:02+0200    |
-|F                           |2021-10-23T06:00:06+0200    |2021-10-23T06:00:07+0200    |
-|G                           |2021-10-23T06:00:08+0200    |2021-10-23T06:00:09+0200    |
-|A                           |2021-10-23T06:00:00+0200    |2021-10-23T06:00:01+0200    |
-|C                           |2021-10-23T06:00:03+0200    |2021-10-23T06:00:02+0200    |
-|F                           |2021-10-23T06:00:06+0200    |2021-10-23T06:00:07+0200    |
-|G                           |2021-10-23T06:00:08+0200    |2021-10-23T06:00:09+0200    |
-|B                           |2021-10-23T06:00:01+0200    |2021-10-23T06:00:11+0200    |
++-----------------------------------+-----------------------------------+-----------------------------------+
+|ID                                 |TS_VIEW                            |TS_CLICK                           |
++-----------------------------------+-----------------------------------+-----------------------------------+
+|A                                  |2021-10-23T06:00:00+0200           |2021-10-23T06:00:01+0200           |
+|C                                  |2021-10-23T06:00:03+0200           |2021-10-23T06:00:02+0200           |
+|F                                  |2021-10-23T06:00:06+0200           |2021-10-23T06:00:07+0200           |
+|G                                  |2021-10-23T06:00:08+0200           |2021-10-23T06:00:09+0200           |
+|B                                  |2021-10-23T06:00:01+0200           |2021-10-23T06:00:11+0200           |
 ```
 All the inner join pairs are emitted as expected. Since we’re no longer windowed, even record B/B is in the result. Note, that the result contains only one result for F but two for G. Because click F appears after views F.1 and F.2, F.2 did replace F.1 before F triggers the join computation. For G, the view arrives before both clicks and thus, G.1 and G.2 join with G. This scenario demonstrates the update behavior of table-table join. After G.1 arrived, the join result is G.1/G. Then the click event G.2 updates the click table and triggers a recomputation of the join result to G.2/G.1
 
