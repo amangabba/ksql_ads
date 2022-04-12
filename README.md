@@ -317,21 +317,6 @@ EMIT CHANGES;
 |G                         |2021-10-23T06:00:08+0200  |null                      |null                      |
 ```
 As expected, we get the inner C/C join result as well as one join result for each (left) stream record.
-<!---
-### Kstream to Global Ktable joins
-GlobalKTable is not supported by KsqlDB yet. In contrast to a KTable that is partitioned over all KafkaStreams instances, a GlobalKTable is fully replicated per KafkaStreams instance. Every partition of the underlying topic is consumed by each GlobalKTable, such that the full set of data is available in every KafkaStreams instance. This provides the ability to perform joins with KStream without having to repartition the input stream. All joins with the GlobalKTable require that a KeyValueMapper is provided that can map from the KeyValue of the left hand side KStream to the key of the right hand side GlobalKTable.
-#### Creating a GlobalKTable through StreamBuilder
-```
-builder.globalTable("topic-name", "queryable-store-name");
-```
-#### Inner join
-![](https://cdn.confluent.io/wp-content/uploads/Inner-Stream-GlobalTable-Join-768x561.jpg)
-```
-code
-```
-#### Left join
-![](https://cdn.confluent.io/wp-content/uploads/Left-Steam-GlobalTable-Join-768x561.jpg)
-```
-code
-```
---->
+
+#### Acknowledgments
+Images and Examples were taken and are based on the article "Crossing the Streams – Joins in Apache Kafka" available here: https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/
