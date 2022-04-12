@@ -320,5 +320,5 @@ EMIT CHANGES;
 ```
 As expected, we get the inner C/C join result as well as one join result for each (left) stream record.
 
-#### Acknowledgments
+## Acknowledgments
 Images and examples were taken from the article "Crossing the Streams – Joins in Apache Kafka" available here: https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/
