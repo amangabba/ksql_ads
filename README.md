@@ -1,5 +1,23 @@
 # ksqlDB - Ads
 
+## Introduction
+
+This notebook summarizes some of the concepts described in the article [Crossing the Streams – Joins in Apache Kafka](https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/). The latter shows the different types of joins that are available with Kafka Streams through an example on online advertisements. The notebook instead shows the joins supported in KsqlDB, with slight changes to the examples used in the article.
+
+Kafka supports three kinds of join:
+| Type         | Description                                                                                                                                        |
+|:------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------|
+| Inner        | Emits an output when both input sources have records with the same key.                                                                            |
+| Left         | Emits an output for each record in the left or primary input source. If the other source does not have a value for a given key, it is set to null. |
+| Outer        | Emits an output for each record in either input source. If only one source contains a key, the other is null.                                      |
+
+The following table shows which operations are permitted between KStreams and Ktables:
+|Primary Type | Secondary Type | Inner Join | Left Join | Outer Join|
+|:-----------:|:--------------:|:----------:|:---------:|:---------:|
+| KStream     | KStream        | Supported  | Supported | Supported |
+| KTable      | KTable         | Supported  | Supported | Supported |
+| KStream     | KTable         | Supported  | Supported | N/A       |
+
 ## Set up
 
 ### start up the infrastructure
@@ -24,23 +42,7 @@ run the following commands that allows to rerun the queries always from the begi
 SET 'auto.offset.reset' = 'earliest';
 ```
 
-## Introduction
 
-This notebook summarizes some of the concepts described in the following [article](https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/): the types of joins that can be used with Kafka Streams. The notebook instead shows the joins supported in KsqlDB, with slight changes to the examples used in the article.
-
-Kafka supports three kinds of join:
-| Type         | Description                                                                                                                                        |
-|:------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------|
-| Inner        | Emits an output when both input sources have records with the same key.                                                                            |
-| Left         | Emits an output for each record in the left or primary input source. If the other source does not have a value for a given key, it is set to null. |
-| Outer        | Emits an output for each record in either input source. If only one source contains a key, the other is null.                                      |
-
-The following table shows which operations are permitted between KStreams and Ktables:
-|Primary Type | Secondary Type | Inner Join | Left Join | Outer Join|
-|:-----------:|:--------------:|:----------:|:---------:|:---------:|
-| KStream     | KStream        | Supported  | Supported | Supported |
-| KTable      | KTable         | Supported  | Supported | Supported |
-| KStream     | KTable         | Supported  | Supported | N/A       |
 
 ## Implementation in Ksql
 
@@ -319,4 +321,4 @@ EMIT CHANGES;
 As expected, we get the inner C/C join result as well as one join result for each (left) stream record.
 
 #### Acknowledgments
-Images and Examples were taken and are based on the article "Crossing the Streams – Joins in Apache Kafka" available here: https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/
+Images and examples were taken from the article "Crossing the Streams – Joins in Apache Kafka" available here: https://www.confluent.io/blog/crossing-streams-joins-apache-kafka/
